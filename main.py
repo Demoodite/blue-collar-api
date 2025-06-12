@@ -1,12 +1,12 @@
-from uuid import uuid4
-
 from fastapi import FastAPI, HTTPException
-from sqlmodel import Session, SQLModel, select
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlmodel import Session, SQLModel
 
 from api.requests import *
 from api.responses import *
-from db.engine import engine
-from db.models import Employee, Entrance, Token, User
+from auth.auth import *
+from db.engine import *
+from db.models import *
 
 app = FastAPI()
 
@@ -18,30 +18,23 @@ def on_startup():
 
 @app.post("/register", response_model=MessageResponse)
 def register(register_request: RegisterRequest):
+    if get_user_by_username(register_request.username):
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    hashed_password = get_password_hash(register_request.password)
+    user = User(username=register_request.username, password_hash=hashed_password)
     with Session(engine) as session:
-        if session.exec(
-            select(User).where(User.username == register_request.username)
-        ).first():
-            raise HTTPException(status_code=400, detail="User already exists")
-        user = User(
-            username=register_request.username, password=register_request.password
-        )
         session.add(user)
         session.commit()
-        return MessageResponse(message=f"User {user.username} registered")
+        session.refresh(user)
+    return MessageResponse(message=f"User {user.username} created")
 
 
 @app.post("/login", response_model=LoginResponse)
-def login(login_request: LoginRequest):
-    with Session(engine) as session:
-        user = session.exec(
-            select(User).where(User.username == login_request.username)
-        ).first()
-        if not user or user.password != login_request.password:
-            raise HTTPException(status_code=400, detail="Invalid credentials")
-        token = str(uuid4())
-        if user.id == None:
-            raise HTTPException(status_code=400, detail="Invalid user")
-        session.add(Token(token=token, user_id=user.id))
-        session.commit()
-        return LoginResponse(access_token=token, token_type="Bearer")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    access_token = create_access_token(data={"sub": user.username})
+    return LoginResponse(access_token=access_token, token_type="Bearer")
