@@ -1,10 +1,16 @@
 from pydantic import BaseModel
 
 
-class MessageResponse(BaseModel):
+class Message(BaseModel):
     message: str
 
 
-class LoginResponse(BaseModel):
+class Login(BaseModel):
     access_token: str
     token_type: str
+
+
+class Employee(BaseModel):
+    name: str
+    title: str
+    current_task: str

@@ -8,7 +8,7 @@ class User(SQLModel, table=True):
 
 
 class Employee(SQLModel, table=True):
-    user_id: int = Field(foreign_key="user.id", primary_key=True)
+    user_id: int | None = Field(foreign_key="user.id", primary_key=True)
     name: str
     title: str
     current_task: str
