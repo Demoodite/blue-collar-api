@@ -14,3 +14,8 @@ class Employee(BaseModel):
     name: str
     title: str
     current_task: str
+
+
+class Entrance(BaseModel):
+    enter_timestamp: int
+    leave_timestamp: int | None

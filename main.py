@@ -1,9 +1,9 @@
-from os import stat
+from datetime import datetime
+from math import floor
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import state
-from sqlmodel import Session, SQLModel, select
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlmodel import Session, SQLModel, null, select
 
 from api import requests, responses
 from auth import auth
@@ -58,7 +58,7 @@ def post_employee_info(
 ):
     with Session(db_engine) as session:
         statement = select(Employee).where(Employee.user_id == user.id)
-        if not session.exec(statement).first() is None:
+        if session.exec(statement).first() is not None:
             raise HTTPException(status_code=400, detail="Employee already exists")
         employee = Employee(
             user_id=user.id,
@@ -88,3 +88,47 @@ def put_employee_info(
         session.commit()
         session.refresh(employee)
     return employee
+
+
+@app.post("/employee/enter", response_model=responses.Entrance)
+def employee_enter(user: User = Depends(auth.get_current_user)):
+    with Session(db_engine) as session:
+        statement = (
+            select(Entrance)
+            .where(Entrance.user_id == user.id)
+            .where(Entrance.leave_timestamp == null())
+        )
+
+        if session.exec(statement).first() is not None:
+            raise HTTPException(status_code=403, detail="Already entered")
+        assert user.id is not None
+        enterance = Entrance(user_id=user.id, enter_timestamp=datetime.now())
+        session.add(enterance)
+        session.commit()
+        session.refresh(enterance)
+    return responses.Entrance(
+        enter_timestamp=floor(enterance.enter_timestamp.timestamp()),
+        leave_timestamp=None,
+    )
+
+
+@app.post("/employee/leave", response_model=responses.Entrance)
+def employee_leave(user: User = Depends(auth.get_current_user)):
+    with Session(db_engine) as session:
+        statement = (
+            select(Entrance)
+            .where(Entrance.user_id == user.id)
+            .where(Entrance.leave_timestamp == null())
+        )
+        enterance = session.exec(statement).first()
+        if enterance is None:
+            raise HTTPException(status_code=403, detail="Hasn't entered")
+        assert user.id is not None
+        enterance.leave_timestamp = datetime.now()
+        session.add(enterance)
+        session.commit()
+        session.refresh(enterance)
+    return responses.Entrance(
+        enter_timestamp=floor(enterance.enter_timestamp.timestamp()),
+        leave_timestamp=floor(enterance.leave_timestamp.timestamp()),
+    )

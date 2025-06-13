@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlmodel import Field, SQLModel
 
 
@@ -17,5 +19,5 @@ class Employee(SQLModel, table=True):
 class Entrance(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
-    enterTimestamp: int
-    leaveTimestamp: int
+    enter_timestamp: datetime
+    leave_timestamp: datetime | None = Field(default=None)
