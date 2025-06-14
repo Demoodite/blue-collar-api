@@ -18,6 +18,15 @@ def on_startup():
     SQLModel.metadata.create_all(db_engine)
 
 
+def get_current_employee(user: User = Depends(auth.get_current_user)):
+    with Session(db_engine) as session:
+        statement = select(Employee).where(Employee.user_id == user.id)
+        employee = session.exec(statement).first()
+        if employee is None:
+            raise HTTPException(status_code=401, detail="Employee not found")
+        return employee
+
+
 @app.post("/user/register", response_model=responses.Message, status_code=201)
 def register(register_request: requests.Register):
     if auth.get_user_by_username(register_request.username):
@@ -43,12 +52,7 @@ def login(login_request: OAuth2PasswordRequestForm = Depends()):
 
 
 @app.get("/employee", response_model=responses.Employee)
-def get_employee_info(user: User = Depends(auth.get_current_user)):
-    with Session(db_engine) as session:
-        statement = select(Employee).where(Employee.user_id == user.id)
-        employee = session.exec(statement).first()
-    if employee is None:
-        raise HTTPException(status_code=404, detail="Employee not found")
+def get_employee_info(employee: Employee = Depends(get_current_employee)):
     return employee
 
 
@@ -74,13 +78,11 @@ def post_employee_info(
 
 @app.put("/employee", response_model=responses.Employee)
 def put_employee_info(
-    employee_request: requests.Employee, user: User = Depends(auth.get_current_user)
+    employee_request: requests.Employee,
+    employee: Employee = Depends(get_current_employee),
 ):
     with Session(db_engine) as session:
         statement = select(Employee).where(Employee.user_id == user.id)
-        employee = session.exec(statement).first()
-        if employee is None:
-            raise HTTPException(status_code=404, detail="Employee not found")
         employee.name = employee_request.name
         employee.title = employee_request.title
         employee.current_task = employee_request.current_task
@@ -91,44 +93,57 @@ def put_employee_info(
 
 
 @app.post("/employee/enter", response_model=responses.Entrance)
-def employee_enter(user: User = Depends(auth.get_current_user)):
+def employee_enter(employee: Employee = Depends(get_current_employee)):
     with Session(db_engine) as session:
         statement = (
             select(Entrance)
-            .where(Entrance.user_id == user.id)
+            .where(Entrance.user_id == employee.user_id)
             .where(Entrance.leave_timestamp == null())
         )
 
         if session.exec(statement).first() is not None:
             raise HTTPException(status_code=403, detail="Already entered")
-        assert user.id is not None
-        enterance = Entrance(user_id=user.id, enter_timestamp=datetime.now())
-        session.add(enterance)
+        assert employee.user_id is not None
+        entrance = Entrance(user_id=employee.user_id, enter_timestamp=datetime.now())
+        session.add(entrance)
         session.commit()
-        session.refresh(enterance)
+        session.refresh(entrance)
     return responses.Entrance(
-        enter_timestamp=floor(enterance.enter_timestamp.timestamp()),
+        enter_timestamp=floor(entrance.enter_timestamp.timestamp()),
         leave_timestamp=None,
     )
 
 
 @app.post("/employee/leave", response_model=responses.Entrance)
-def employee_leave(user: User = Depends(auth.get_current_user)):
+def employee_leave(employee: Employee = Depends(get_current_employee)):
     with Session(db_engine) as session:
         statement = (
             select(Entrance)
-            .where(Entrance.user_id == user.id)
+            .where(Entrance.user_id == employee.user_id)
             .where(Entrance.leave_timestamp == null())
         )
-        enterance = session.exec(statement).first()
-        if enterance is None:
+        entrance = session.exec(statement).first()
+        if entrance is None:
             raise HTTPException(status_code=403, detail="Hasn't entered")
-        assert user.id is not None
-        enterance.leave_timestamp = datetime.now()
-        session.add(enterance)
+        assert employee.user_id is not None
+        entrance.leave_timestamp = datetime.now()
+        session.add(entrance)
         session.commit()
-        session.refresh(enterance)
+        session.refresh(entrance)
     return responses.Entrance(
-        enter_timestamp=floor(enterance.enter_timestamp.timestamp()),
-        leave_timestamp=floor(enterance.leave_timestamp.timestamp()),
+        enter_timestamp=floor(entrance.enter_timestamp.timestamp()),
+        leave_timestamp=floor(entrance.leave_timestamp.timestamp()),
     )
+
+
+@app.get("/employee/co-workers", response_model=list[responses.Employee])
+def get_present_coworkers(employee: Employee = Depends(get_current_employee)):
+    with Session(db_engine) as session:
+        statement = (
+            select(Employee)
+            .join(Entrance, Employee.user_id == Entrance.user_id)
+            .where(Employee.user_id != employee.user_id)
+            .where(Entrance.leave_timestamp == null())
+        )
+        coworkers = session.exec(statement).all()
+        return coworkers
