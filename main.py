@@ -1,7 +1,7 @@
 from datetime import datetime
 from math import floor
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, SQLModel, null, select
 
@@ -82,7 +82,7 @@ def put_employee_info(
     employee: Employee = Depends(get_current_employee),
 ):
     with Session(db_engine) as session:
-        statement = select(Employee).where(Employee.user_id == user.id)
+        statement = select(Employee).where(Employee.user_id == employee.user_id)
         employee.name = employee_request.name
         employee.title = employee_request.title
         employee.current_task = employee_request.current_task
@@ -90,6 +90,19 @@ def put_employee_info(
         session.commit()
         session.refresh(employee)
     return employee
+
+
+@app.post("/employee/upload/avatar")
+async def employee_upload_avatar(file: UploadFile = File(...)):
+    contents = await file.read()
+    filename = file.filename
+    content_type = file.content_type
+    size = len(contents)
+
+    with open(f"uploaded_{filename}", "wb") as f:
+        f.write(contents)
+
+    return "Succsess"
 
 
 @app.post("/employee/enter", response_model=responses.Entrance)
